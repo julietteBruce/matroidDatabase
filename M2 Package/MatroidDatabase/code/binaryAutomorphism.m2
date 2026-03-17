@@ -209,8 +209,7 @@ gussianEliminationBinaryList({1, 2, 3, 4}) == (3, {1, 2, 4})
 gussianEliminationBinaryList({1, 2, 4, 7}) == (3, {1, 2, 4})
 
 
-
-gussianEliminationBinaryList (List, List) := (v, pivotList) -> (
+gussianEliminationBinaryList (ZZ, List) := (v, pivotList) -> (
     for piv in pivotList do (
 	pivotCol := piv#0;
 	pivotVec := piv#1;
@@ -219,12 +218,21 @@ gussianEliminationBinaryList (List, List) := (v, pivotList) -> (
     v
     )
 
-
+-- v = 7 (binary 111), pivots cover bits 0 and 1
+-- 7 XOR 1 XOR 2 = 4
+gussianEliminationBinaryList(7, {{0, 1}, {1, 2}}) == 4
+gussianEliminationBinaryList(0, {{0, 1}, {1, 2}}) == 0
+-- pivots: bit 0 -> 1 (binary 01), bit 1 -> 2 (binary 10)
+-- v = 3 (binary 11) should reduce to 0 via XOR with both pivots
+assert(gussianEliminationBinaryList(3, {{0, 1}, {1, 2}}) == 0)
 
 isIndependent = (L) -> (
-    rankBinaryList(L) == #L
+    (gussianEliminationBinaryList(L))#0 == #L
     )
 
+isIndependent({1, 2, 4, 8}) == true
+isIndependent({5}) == true
+isIndependent({3, 3}) == false
 --------------------------------------------------------------------
 --------------------------------------------------------------------
 ----- DESCRIPTION: Uses greedy algorithm to find a subset of a

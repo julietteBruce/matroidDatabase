@@ -22,6 +22,17 @@ needsPackage "SpechtModule";
 -- Connectedness is not checked, because it is not needed for correctness.
 -- ============================================================
 
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- DESCRIPTION: Bitwise xor of ingeter vectors, the key
+----- is when working with binary vector this is the same as
+----- as addition but faster:
+----- e.g. 10 + 11 = (1 xOr 1) (0 xOr 1) = 101
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+bitXor = (a,b) -> (
+    a ^^ b
+);
 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -50,6 +61,21 @@ permutationSign (List) := (L) -> (
     evenCycles % 2 
     )
 
+permutationSign (MutableHashTable, MutableList) := (P, I) -> (   
+    visited := new MutableHashTable;
+    for i in I do (
+	if not visited#?i then (
+	    cycles = cycles + 1;
+	    curPos := i;
+	    while not visited#?curPos do (
+		visited#curPos = true;
+		curPost = P#curPos;
+		);
+	    );
+	);
+    (#I - cycles) % 2 
+    )
+
 permutationSign({0, 1}) == 0
 permutationSign({1,0}) == 1
 permutationSign({2, 0, 4, 3, 1}) == 1
@@ -76,10 +102,7 @@ isEven({2, 0, 4, 3, 1}) == false
 isEven({0, 2, 4, 3, 1}) == true
 
 
--- Bitwise XOR on integer-encoded vectors.
-bitXor = (a,b) -> (
-    a ^^ b
-);
+
 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
@@ -159,6 +182,19 @@ gussianEliminationBinaryList (List) := (L) -> (
 gussianEliminationBinaryList({1, 2, 3, 4}) == (3, {1, 2, 4})
 gussianEliminationBinaryList({1, 2, 4, 7}) == (3, {1, 2, 4})
 
+
+
+gussianEliminationBinaryList (List, List) := (v, pivotList) -> (
+    for piv in pivotList do (
+	pivotCol := piv#0;
+	pivotVec := piv#1;
+	if (v >> pivotCol) % 2 == 1 then v = bitXor(v, pivotVec)
+	);
+    v
+    )
+
+
+
 isIndependent = (L) -> (
     rankBinaryList(L) == #L
     )
@@ -229,6 +265,105 @@ multiplyBinaryList (ZZ, List) := (v, B) -> (
 	if (((v >> i) & 1) == 1) then (n = bitXor(n, B#i));
 	);
     n
+    )
+
+
+
+verifyPartialMap = method();
+verifyPartialMap (ZZ, List, List, MutableHashTable) :=  (i, B, L, membTable, srcLookUp) -> (
+    newPairs := {};
+    numPrev := 1 << i;
+    for k from 0 to (numPrev - 1) do (
+	img := B#i;
+	src := (1 << i);
+	for j from 0 to (i - 1) do (
+	    if  (k >> j) % 2 == 1 then (
+		img = bitXor(img, B#j);
+		src = bitXor(src, 1 << j);
+		);
+	    );
+	if not membTable#?img then return (false, {});
+	--
+	dstID := posTable#img;
+	srcID := if srcLookup#?src then srcLookup#src
+                 else error("no source found for bit pattern " | toString src);
+        newPairs = append(newPairs, (srcID, dstID));
+	);
+    (true, newPairs)
+    )
+
+
+oddAutSearch = method();
+oddAutSearch (
+
+hasOddAut = method();
+hasOddAut (ZZ, List) := (k, L) -> (
+    -- optional validation step, which can be skipped for speed
+    if opts.Validate == true then (
+	validateBinaryMatroidData(L)
+	);
+    -- basic set-up
+    n := #L;  -- size of ground set
+    B := greedyBinaryBasis(k, L); -- basis for span of L
+    cordTable := cordinateTable(k, B);
+    membTable := membershipTable(L);
+    posTable := positionTable(L);
+    --
+    cordBits := new MutableHashTable;
+    for v in L do (
+	c := cordTable#v;
+	bits := 0;
+	for i from 0 to (k - 1) do (
+	    if c#i == 1 then bits = bits + (1 << i);
+	    );
+	cordBits#v = bits;
+	);
+    --
+    mainSearch := null;
+    mainSearch = (i, imgB, usedTable, pivList, mapTable, srcInd) -> (
+	if i == k then (
+	    if permutationSign(mapTable, srcInd) == 1 then (
+		img := for v in L list mapTable#(posTable#v);
+		perm := for j from 0 to (n - 1) list mapTable#j;
+		return {B, imgB, img, perm};
+		);
+	    return false;
+	    );
+	--
+	for x in L do (
+	    if not usedTable#?x then (
+		r := gussianEliminationBinaryList(cordBits#x, pivList);
+		if r != 0 then (
+		    col := leadingBit(r);
+		    newPivotList := append(pivList, (col, r));
+		    imgB2 := append(imgB, x)
+		    --
+		    result := verifyPartialMap(i, imgB2, L, membTable, cordBits);
+		    valid := result#0;
+		    newPairs := result#1;
+		    --
+		    if valid then (
+			for p in newPairs do mapTable#(p#0) = p#1;
+			newSrcInd := srcInd | (for p in newPairs lsit p#0);
+			--
+			usedTable#x = true;
+			--
+			ans := mainSearch(i+1, imgB2, usedTable, newPivotList, mapTable, newSrcInd);
+			--
+			remove(usedTable, x);
+			for p in newPairs do remove (mapTable, p#0);
+			if not isFalse(ans) then return ans;
+			);
+		    );
+		);
+	    );
+	false
+	);
+    --
+    usedTable0 = new MutableHashTable;
+    mapTable0 = new MutableHashTable;
+    mainSearch(0, {}, used0, {}, mapTable0, {})
+    
     )
 
 
@@ -332,7 +467,6 @@ inducedDataFromBasisImage = (S,coords,Bim,Sset,pos) -> (
 
     {image, perm}
 );
-
 
 
 -- ============================================================

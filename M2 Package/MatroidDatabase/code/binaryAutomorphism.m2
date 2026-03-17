@@ -23,97 +23,217 @@ needsPackage "SpechtModule";
 -- ============================================================
 
 
--- ============================================================
--- Basic assertion helper
--- ============================================================
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- DESCRIPTION: Given a list  of integers 0 to n-1 repersenting
+----- a premuation of 0 to n-1 this computes the sign as 0 (even)
+----- or 1 (odd) using cycle decomposition.
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+permutationSign = method();
+permutationSign (List) := (L) -> (
+    n := #L;
+    visited := new MutableList from toList(n : false);
+    evenCycles := 0; 
+    for i from 0 to n-1 do (
+	if visited#i == false then (
+	    cycleLength := 0;
+	    j := i;
+	    while visited#j == false do (
+		visited#j = true;
+		cycleLength = cycleLength + 1;
+		j = L#j;
+		);
+	    if cycleLength % 2 == 0 then evenCycles = evenCycles + 1;
+	    );
+	);
+    evenCycles % 2 
+    )
 
-assertTrue = (cond, msg) -> (
-    if not cond then error msg;
-    true
-);
+permutationSign({0, 1}) == 0
+permutationSign({1,0}) == 1
+permutationSign({2, 0, 4, 3, 1}) == 1
+permutationSign({0, 2, 4, 3, 1}) == 0
 
+isOdd = method();
+isOdd (List) := (L) -> (
+    permutationSign(L) == 1
+    )
 
--- ============================================================
--- Low-level GF(2) bit-vector utilities
--- ============================================================
+isOdd({0, 1}) == false
+isOdd({1,0}) == true
+isOdd({2, 0, 4, 3, 1}) == true
+isOdd({0, 2, 4, 3, 1}) == false
+
+isEven = method();
+isEven (List) := (L) -> (
+    permutationSign(L) == 0
+    )
+
+isEven({0, 1}) == true
+isEven({1,0}) == false
+isEven({2, 0, 4, 3, 1}) == false
+isEven({0, 2, 4, 3, 1}) == true
+
 
 -- Bitwise XOR on integer-encoded vectors.
-bitXorGF2 = (a,b) -> (
+bitXor = (a,b) -> (
     a ^^ b
 );
 
--- Position of the highest nonzero bit of x.
--- Example: leadBitGF2(1)=0, leadBitGF2(24)=4.
-leadBitGF2 = x -> (
-    if x == 0 then error "leadBitGF2 called on 0";
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- DESCRIPTION: Returns the number of digits of n written in
+----- binary, i.e., smallest i such that 2^i > n.
+--------------------------------------------------------------------
+--------------------------------------------------------------------
 
-    j := -1;
-    y := x;
-    while y > 0 do (
-        y = y >> 1;
-        j = j + 1;
-    );
-    j
-);
+bitLength = method();
+bitLength (ZZ) := (n) -> (
+    if n < 0 then error "expect positive integer";
+    if n == 0 then 1
+    else (
+	i := 0;
+	while n > 0 do (
+	    n = n // 2;
+	    i = i + 1;
+	    );
+	i
+    )
+)
 
--- Rank over GF(2) of a list of vectors in GF(2)^k.
--- ASSUMPTION: every element of L lies in {0,...,2^k-1}.
-rankGF2 = (L,k) -> (
-    pivots := new MutableHashTable;
+bitLength(3) == 2
+bitLength(64) == 7
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- DESCRIPTION: Returns the last position of non-zero digit
+----- in the binary representation of n.
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+leadingBit = method();
+leadingBit (ZZ) := (n) -> (
+    bitLength(n) - 1
+    )
+
+leadingBit(3) == 1
+leadingBit(64) == 6
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- DESCRIPTION: Does Guassian elimination on a binary list
+----- using bit operations without making matrix
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+gussianEliminationBinaryList = method();
+gussianEliminationBinaryList (List) := (L) -> (
+    pivotHash := new MutableHashTable;
     r := 0;
-
-    for x0 in L do (
-        x := x0;
-
-        -- Eliminate using existing pivots from high bit to low bit.
-        for j in reverse(toList(0..(k-1))) do (
-            if (pivots#?j) and ((((x >> j) & 1) == 1)) then (
-                x = bitXorGF2(x, pivots#j);
+    --
+    for v in L do (
+	vRed := v;
+	--
+	if vRed == 0 then continue;
+	--
+	-- tries to reduce the column represented by v with existing pivots
+	while vRed != 0 and pivotHash#?(leadingBit(vRed)) do (
+	    vRed = bitXor(vRed, pivotHash#(leadingBit(vRed)));
+	    );
+	--
+	-- if vRed != 0 then bitLength(vRed) is not in pivoHash so we need new pivot
+	if vRed != 0 then (
+	    newPivot := leadingBit(vRed);
+	    --
+	    -- back substitution
+	    for j in keys(pivotHash) do (
+		if ((pivotHash#j >> newPivot) & 1) == 1 then (
+			pivotHash#j = bitXor(pivotHash#j, vRed);
+			);
+		);
+	    -- update pivots and rank counter
+	    pivotHash#newPivot = vRed;
+	    r = r + 1;
             );
+	);
+    (r, values pivotHash)
+    )
+
+gussianEliminationBinaryList({1, 2, 3, 4}) == (3, {1, 2, 4})
+gussianEliminationBinaryList({1, 2, 4, 7}) == (3, {1, 2, 4})
+
+isIndependent = (L) -> (
+    rankBinaryList(L) == #L
+    )
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- DESCRIPTION: Uses greedy algorithm to find a subset of a
+----- a binary list that is a basis for the span of the list.
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+greedyBinaryBasis = method();
+greedyBinaryBasis (List) := (L) -> (
+    pivotHash := new MutableHashTable;
+    basisList := {};
+    for v in L do (
+	vRed := v;
+       	--
+	-- tries to reduce the column represented by v with existing pivots
+	while vRed != 0 and pivotHash#?(leadingBit(vRed)) do (
+	    vRed = bitXor(vRed, pivotHash#(leadingBit(vRed)));
+	    );
+	--
+	-- this means v not in span yet
+	if vRed != 0 then (
+	    pivotHash#(leadingBit(vRed)) = vRed;
+	    -- store original vector *not* the reduced one
+            basisList = append(basisList,v); 
         );
+	);
+    basisList
+    )
 
-        -- If something remains, it becomes a new pivot.
-        if x != 0 then (
-            pivotIndex := leadBitGF2(x);
-            pivots#pivotIndex = x;
-            r = r + 1;
+greedyBinaryBasis = method();
+greedyBinaryBasis (ZZ, List) := (k, L) -> (
+    pivotHash := new MutableHashTable;
+    basisList := {};
+    for v in L do (
+	vRed := v;
+       	--
+	-- tries to reduce the column represented by v with existing pivots
+	while vRed != 0 and pivotHash#?(leadingBit(vRed)) do (
+	    vRed = bitXor(vRed, pivotHash#(leadingBit(vRed)));
+	    );
+	--
+	-- this means v not in span yet
+	if vRed != 0 then (
+	    pivotHash#(leadingBit(vRed)) = vRed;
+	    -- store original vector *not* the reduced one
+            basisList = append(basisList,v); 
         );
-    );
+	if #basisList == k then return basisList
+	);
+    )
 
-    r
-);
 
-isIndependentGF2 = (L,k) -> (
-    rankGF2(L,k) == #L
-);
-
--- Greedily extract a basis from a spanning set S.
-greedyBasisGF2 = (S,k) -> (
-    B := {};
-
-    for x in S do (
-        if isIndependentGF2(append(B,x),k) then (
-            B = append(B,x);
-        );
-        if #B == k then return B;
-    );
-
-    error "greedyBasisGF2: S does not have rank k"
-);
-
--- Evaluate the mask "mask" against the ordered basis B.
--- If mask = sum_i m_i 2^i, return sum_i m_i B_i in GF(2)^k.
-evalMaskGF2 = (mask,B) -> (
-    x := 0;
-
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- DESCRIPTION: Given a vector v in (Z/2Z)^k and a binary list
+----- B this essentally does B*v without matrices:
+----- v = sum v_i 2^i and B = {b1, b2, ..., bt} then 
+----- output is sum v_i*b_i
+--------------------------------------------------------------------
+----------------------------------------------------------------------
+multiplyBinaryList = method();
+multiplyBinaryList (ZZ, List) := (v, B) -> (
+    n := 0;
     for i from 0 to (#B - 1) do (
-        if (((mask >> i) & 1) == 1) then (
-            x = bitXorGF2(x, B#i);
-        );
-    );
+	if (((v >> i) & 1) == 1) then (n = bitXor(n, B#i));
+	);
+    n
+    )
 
-    x
-);
+
+
+---- NOT FIXED 
 
 -- Coordinate table relative to an ordered basis B.
 -- T#x = mask such that x = evalMaskGF2(mask,B).
@@ -213,19 +333,6 @@ inducedDataFromBasisImage = (S,coords,Bim,Sset,pos) -> (
     {image, perm}
 );
 
-isOddPermutation = p -> (
-    t := 0;
-
-    for i from 0 to (#p - 1) do (
-        for j from (i + 1) to (#p - 1) do (
-            if p#i > p#j then (
-                t = 1 - t;
-            );
-        );
-    );
-
-    t == 1
-);
 
 
 -- ============================================================
@@ -285,6 +392,10 @@ oddAutWitnessFripExact = (k,L) -> (
 
     search(0, {}, {})
 );
+
+
+
+
 
 hasOddAutFripExact = (k,L) -> (
     W := oddAutWitnessFripExact(k,L);

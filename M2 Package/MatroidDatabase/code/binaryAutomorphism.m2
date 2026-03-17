@@ -24,15 +24,28 @@ needsPackage "SpechtModule";
 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
------ DESCRIPTION: Bitwise xor of ingeter vectors, the key
------ is when working with binary vector this is the same as
------ as addition but faster:
------ e.g. 10 + 11 = (1 xOr 1) (0 xOr 1) = 101
+----- DESCRIPTION: Bitwise xor of ingeter vectors, compares each
+----- digit of the two numbers binary expansion and returns 1
+----- where the digist differ, 0 where they're the same.
+----- e.g. 5 = 0101, 3 = 0011 then bitXor(5,3) = 6
+----- (0 xOr 0) (1 xOr 0) (0 xOr 1) (1 xOr 1)  = 0110 = 6
+-----
+----- The key for us is that this gives a fast way to add vectors
+----- in (F_2)^k without having to create vectors:
+----- e.g. 5 = (0,1,0,1) and 3 = (0,0,1,1) in (F_2)^4 then
+----- (0,1,0,1) + (0,0,1,1) = (0,1,1,0)
+----- which we may think of as being represented by 6. 
 --------------------------------------------------------------------
 --------------------------------------------------------------------
-bitXor = (a,b) -> (
+bitXor = method();
+bitXor (ZZ, ZZ) := (a,b) -> (
     a ^^ b
 );
+
+bitXor(5,3) == 6
+bitXor(10,12) == 6
+bitXor(0,3) == 3
+bitXor(7,7) == 0
 
 --------------------------------------------------------------------
 --------------------------------------------------------------------

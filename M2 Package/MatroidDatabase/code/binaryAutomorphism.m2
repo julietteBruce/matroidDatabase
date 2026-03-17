@@ -430,8 +430,8 @@ print "Test 5 (standard basis, v maps to itself): PASSED"
 
 
 verifyPartialMap = method();
-verifyPartialMap (ZZ, List, List, MutableHashTable) :=  (i, B, L, membTable, srcLookUp) -> (
-    newPairs := {};
+verifyPartialMap (ZZ, List, MutableHashTable, MutableHashTable) :=  (i, B, posTable, srcLookup) -> (
+    newPairs := new MutableList;
     numPrev := 1 << i;
     for k from 0 to (numPrev - 1) do (
 	img := B#i;
@@ -442,15 +442,60 @@ verifyPartialMap (ZZ, List, List, MutableHashTable) :=  (i, B, L, membTable, src
 		src = bitXor(src, 1 << j);
 		);
 	    );
-	if not membTable#?img then return (false, {});
+	if not posTable#?img then return (false, {});
 	--
 	dstID := posTable#img;
 	srcID := if srcLookup#?src then srcLookup#src
                  else error("no source found for bit pattern " | toString src);
-        newPairs = append(newPairs, (srcID, dstID));
+        newPairs#(#newPairs) = (srcID, dstID);
 	);
-    (true, newPairs)
+    (true, toList newPairs)
     )
+
+
+------------------------------------------------------------
+-- Test 1: i = 0  (base case, k only takes value 0)
+-- img = B#0 = 5, src = 1 << 0 = 1
+-- No inner loop iterations since i-1 < 0
+------------------------------------------------------------
+B1 = {5};
+pos1 = new MutableHashTable from {5 => 10};
+srcL1 = new MutableHashTable from {1 => 100};
+
+(ok1, pairs1) = verifyPartialMap(0, B1, pos1, srcL1);
+assert(ok1 == true);
+assert(pairs1 == {(100, 10)});
+print "Test 1 passed: i=0 base case";
+
+------------------------------------------------------------
+-- Test 2: i = 1  (k in {0, 1})
+-- k=0: img = B#1 = 3,        src = 2    (binary 10)
+-- k=1: img = B#1 xor B#0 = 3 xor 5 = 6, src = 2 xor 1 = 3 (binary 11)
+------------------------------------------------------------
+B2 = {5, 3};
+pos2 = new MutableHashTable from {3 => 20, 6 => 21};
+srcL2 = new MutableHashTable from {2 => 200, 3 => 201};
+
+(ok2, pairs2) = verifyPartialMap(1, B2, pos2, srcL2);
+assert(ok2 == true);
+assert(#pairs2 == 2);
+assert(pairs2#0 == (200, 20));   -- k=0
+assert(pairs2#1 == (201, 21));   -- k=1
+print "Test 2 passed: i=1, two combinations";
+
+------------------------------------------------------------
+-- Test 3: Failure case — image not found in posTable
+-- i = 1, k=0 gives img = B#1 = 7, which IS in posTable
+-- k=1 gives img = 7 xor 5 = 2, which is NOT in posTable
+------------------------------------------------------------
+B3 = {5, 7};
+pos3 = new MutableHashTable from {7 => 30};  -- missing entry for 2
+srcL3 = new MutableHashTable from {2 => 300, 3 => 301};
+
+(ok3, pairs3) = verifyPartialMap(1, B3, pos3, srcL3);
+assert(ok3 == false);
+assert(pairs3 == {});
+print "Test 3 passed: returns false when image not in posTable";
 
 
 hasOddAut = method();

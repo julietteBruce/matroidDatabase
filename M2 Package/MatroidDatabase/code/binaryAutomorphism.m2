@@ -57,7 +57,7 @@ bitXor(7,7) == 0
 permutationSign = method();
 permutationSign (List) := (L) -> (
     n := #L;
-    visited := new MutableList from toList(n : false);
+    visited := new MutableList from (n : false);
     evenCycles := 0; 
     for i from 0 to n-1 do (
 	if visited#i == false then (
@@ -76,23 +76,36 @@ permutationSign (List) := (L) -> (
 
 permutationSign (MutableHashTable, MutableList) := (P, I) -> (   
     visited := new MutableHashTable;
+    numCycles := 0;
     for i in I do (
 	if not visited#?i then (
-	    cycles = cycles + 1;
+	    numCycles = numCycles + 1;
 	    curPos := i;
 	    while not visited#?curPos do (
 		visited#curPos = true;
-		curPost = P#curPos;
+		curPos = P#curPos;
 		);
 	    );
 	);
-    (#I - cycles) % 2 
+    (#I - numCycles) % 2 
     )
 
 permutationSign({0, 1}) == 0
 permutationSign({1,0}) == 1
 permutationSign({2, 0, 4, 3, 1}) == 1
 permutationSign({0, 2, 4, 3, 1}) == 0
+--
+H1 = new MutableHashTable from {(0,0), (1,1)}
+L1 = new MutableList from {0,1}
+permutationSign(H1,L1) == 0
+
+H2 = new MutableHashTable from {(0,1), (1,0)}
+L2 = new MutableList from {0,1}
+permutationSign(H2,L2) == 1
+
+H3 = new MutableHashTable from {(0,2), (1,0), (2,4), (3,3), (4,1)}
+L3 = new MutableList from {0,1,2,3,4}
+permutationSign(H3,L3) == 1
 
 isOdd = method();
 isOdd (List) := (L) -> (

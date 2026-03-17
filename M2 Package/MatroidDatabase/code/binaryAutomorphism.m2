@@ -242,7 +242,8 @@ isIndependent({3, 3}) == false
 greedyBinaryBasis = method();
 greedyBinaryBasis (List) := (L) -> (
     pivotHash := new MutableHashTable;
-    basisList := {};
+    basisList := new MutableList from {};
+    ind := 0;
     for v in L do (
 	vRed := v;
        	--
@@ -255,16 +256,17 @@ greedyBinaryBasis (List) := (L) -> (
 	if vRed != 0 then (
 	    pivotHash#(leadingBit(vRed)) = vRed;
 	    -- store original vector *not* the reduced one
-            basisList = append(basisList,v); 
+	    basisList#ind = v;
+            ind = ind + 1;
         );
 	);
-    basisList
+    toList(basisList)
     )
 
-greedyBinaryBasis = method();
 greedyBinaryBasis (ZZ, List) := (k, L) -> (
     pivotHash := new MutableHashTable;
-    basisList := {};
+    basisList := new MutableList from {};
+    ind := 0;
     for v in L do (
 	vRed := v;
        	--
@@ -277,11 +279,86 @@ greedyBinaryBasis (ZZ, List) := (k, L) -> (
 	if vRed != 0 then (
 	    pivotHash#(leadingBit(vRed)) = vRed;
 	    -- store original vector *not* the reduced one
-            basisList = append(basisList,v); 
+            basisList#ind = v;
+            ind = ind + 1;
         );
-	if #basisList == k then return basisList
+	if #basisList == k then return toList(basisList)
 	);
+    return error "vectors do not span k-dim space.";
     )
+
+
+
+--------------------------------------------------------------------
+-- TEST EXAMPLES
+--------------------------------------------------------------------
+-- Encoding convention: integer n encodes a binary vector whose
+-- bits are the coordinates over GF(2).
+--
+--   7 = 111,  5 = 101,  3 = 011,  6 = 110
+--   4 = 100,  2 = 010,  1 = 001
+
+--------------------------------------------------------------------
+-- Test 0: empty list
+--------------------------------------------------------------------
+assert( greedyBinaryBasis({}) == {} )
+print "Test 0 (empty list): PASSED"
+
+--------------------------------------------------------------------
+-- Test 1: single nonzero element
+--------------------------------------------------------------------
+assert( greedyBinaryBasis({5}) == {5} )
+print "Test 1 (single element): PASSED"
+
+--------------------------------------------------------------------
+-- Test 2: standard basis vectors — all independent
+--   4=100, 2=010, 1=001  →  should keep all three
+--------------------------------------------------------------------
+assert( greedyBinaryBasis({4, 2, 1}) == {4, 2, 1} )
+print "Test 2 (standard basis): PASSED"
+
+--------------------------------------------------------------------
+-- Test 3: three independent, one dependent
+--   7=111, 5=101, 3=011, 6=110
+--   Note: 6 = 5 xor 3, so {7,5,3} spans and 6 is redundant
+--   Trace:
+--     7 → vRed=7, pivot@bit2 = 7         kept
+--     5 → vRed = 5 xor 7 = 2, pivot@bit1 = 2   kept
+--     3 → vRed = 3 xor 2 = 1, pivot@bit0 = 1   kept
+--     6 → vRed = 6 xor 7 = 1, then 1 xor 1 = 0   skipped
+--------------------------------------------------------------------
+assert( greedyBinaryBasis({7, 5, 3, 6}) == {7, 5, 3} )
+print "Test 3 (one dependent vector dropped): PASSED"
+
+--------------------------------------------------------------------
+-- Test 4: all duplicates
+--   Every copy after the first reduces to 0
+--------------------------------------------------------------------
+assert( greedyBinaryBasis({3, 3, 3}) == {3} )
+print "Test 4 (all duplicates): PASSED"
+
+--------------------------------------------------------------------
+-- Test 5: early-stop variant — request 2 out of 3 independent
+--------------------------------------------------------------------
+assert( greedyBinaryBasis(2, {4, 2, 1}) == {4, 2} )
+print "Test 5 (early stop k=2): PASSED"
+
+--------------------------------------------------------------------
+-- Test 6: early-stop when list has fewer than k independent vectors
+--   {3, 3, 3} has only 1 independent vector, but we ask for k=2
+--   Should return what it found, not null.
+--------------------------------------------------------------------
+result6 := greedyBinaryBasis(2, {3, 3, 3});
+assert( result6 == {3} )
+print "Test 6 (k exceeds rank, graceful fallback): PASSED"
+
+--------------------------------------------------------------------
+-- Test 7: zero in the input list — should be silently skipped
+--------------------------------------------------------------------
+assert( greedyBinaryBasis({0, 5, 0, 3}) == {5, 3} )
+print "Test 7 (zeros in list): PASSED"
+
+print "--- all tests passed ---"
 
 
 --------------------------------------------------------------------
@@ -300,6 +377,55 @@ multiplyBinaryList (ZZ, List) := (v, B) -> (
 	);
     n
     )
+
+-- Encoding: integer bits are GF(2) coordinates.
+--   v = sum v_i 2^i     selects which basis elements to XOR
+--   B = {b0, b1, ...}   the "columns"
+--   result = XOR of b_i for every set bit i of v
+--------------------------------------------------------------------
+
+--------------------------------------------------------------------
+-- Test 0: zero selector — no columns selected, result is 0
+--------------------------------------------------------------------
+assert( multiplyBinaryList(0, {7, 5, 3}) == 0 )
+
+--------------------------------------------------------------------
+-- Test 1: v selects only the first column
+--   v = 1 = ...001  →  picks B#0 = 7
+--------------------------------------------------------------------
+assert( multiplyBinaryList(1, {7, 5, 3}) == 7 )
+print "Test 1 (single column, first): PASSED"
+
+--------------------------------------------------------------------
+-- Test 2: v selects only the second column
+--   v = 2 = ...010  →  picks B#1 = 5
+--------------------------------------------------------------------
+assert( multiplyBinaryList(2, {7, 5, 3}) == 5 )
+print "Test 2 (single column, second): PASSED"
+
+--------------------------------------------------------------------
+-- Test 3: v selects columns 0 and 1
+--   v = 3 = ...011  →  7 xor 5 = 2
+--   7 = 111, 5 = 101  →  xor = 010 = 2
+--------------------------------------------------------------------
+assert( multiplyBinaryList(3, {7, 5, 3}) == 2 )
+print "Test 3 (two columns): PASSED"
+
+--------------------------------------------------------------------
+-- Test 4: v selects all three columns
+--   v = 7 = ...111  →  7 xor 5 xor 3
+--   111 xor 101 = 010, then 010 xor 011 = 001 = 1
+--------------------------------------------------------------------
+assert( multiplyBinaryList(7, {7, 5, 3}) == 1 )
+print "Test 4 (all columns): PASSED"
+
+--------------------------------------------------------------------
+-- Test 5: identity-like basis {4,2,1} = standard basis vectors
+--   v selects a subset, so result should just be v
+--   v = 5 = 101  →  picks B#0=4(100) and B#2=1(001)  →  xor = 101 = 5
+--------------------------------------------------------------------
+assert( multiplyBinaryList(5, {4, 2, 1}) == 5 )
+print "Test 5 (standard basis, v maps to itself): PASSED"
 
 
 
@@ -326,9 +452,6 @@ verifyPartialMap (ZZ, List, List, MutableHashTable) :=  (i, B, L, membTable, src
     (true, newPairs)
     )
 
-
-oddAutSearch = method();
-oddAutSearch (
 
 hasOddAut = method();
 hasOddAut (ZZ, List) := (k, L) -> (

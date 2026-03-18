@@ -1,5 +1,4 @@
 needsPackage "Matroids";
-needsPackage "SpechtModule";
 
 --
 -- ============================================================
@@ -337,10 +336,6 @@ isFalse = x -> (
 
 hasOddAut = method(Options => {Validate => false});
 hasOddAut (ZZ, List) := opts -> (k, L) -> (
-    -- optional validation step, which can be skipped for speed
-    --if opts.Validate == true then (
-	--validateBinaryMatroidData(L)
---	);
     -- basic set-up
     n := #L;  -- size of ground set
     B := greedyBinaryBasis(k, L); -- basis for span of L
@@ -348,14 +343,19 @@ hasOddAut (ZZ, List) := opts -> (k, L) -> (
     membTable := membershipTable(L);
     posTable := positionTable(L);
     --
+    -- FIX 2: coordTable#v is already an integer bitmask, so just use it directly.
+    -- The old code tried c#i on an integer, which is wrong.
     coordBits := new MutableHashTable;
     for v in L do (
-	c := coordTable#v;
-	bits := 0;
-	for i from 0 to (k - 1) do (
-	    if c#i == 1 then bits = bits + (1 << i);
-	    );
-	coordBits#v = bits;
+	coordBits#v = coordTable#v;
+	);
+    --
+    -- FIX 4: Build a table mapping coordinate bitmasks -> position indices.
+    -- verifyPartialMap needs: given a coordinate bitmask `src`, find the
+    -- position index of the ground-set element with those coordinates.
+    coordToPos := new MutableHashTable;
+    for v in L do (
+	coordToPos#(coordTable#v) = posTable#v;
 	);
     --
     mainSearch := null;
@@ -371,13 +371,16 @@ hasOddAut (ZZ, List) := opts -> (k, L) -> (
 	--
 	for x in L do (
 	    if not usedTable#?x then (
+		-- FIX 1: was misspelled as gussianEliminationBinaryList
 		r := gaussianEliminationBinaryList(coordBits#x, pivList);
 		if r != 0 then (
 		    col := leadingBit(r);
 		    newPivotList := append(pivList, (col, r));
 		    imgB2 := append(imgB, x);
 		    --
-		    result := verifyPartialMap(i, imgB2, membTable, coordBits);
+		    -- FIX 3: pass posTable (not membTable) so dstID gets a position index
+		    -- FIX 4: pass coordToPos (not coordBits) so srcID gets a position index
+		    result := verifyPartialMap(i, imgB2, posTable, coordToPos);
 		    valid := result#0;
 		    newPairs := result#1;
 		    --
@@ -406,9 +409,267 @@ hasOddAut (ZZ, List) := opts -> (k, L) -> (
 
 
 hasOddAutFripExact = (k,L) -> (
-    W := oddAutWitnessFripExact(k,L);
+    W := hasOddAut(k,L);
     not isFalse(W)
 )
+
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- INPUT: (L) = a list representing a matroid
+-----
+----- OUPUT: A matrix representing the matroid
+-----
+----- DESCRIPTION: Given a list L = {L1,L2,...,Ln} of positive intgers
+----- which represents a matroid in Fripertinger-Wild form, this
+----- returns the matrix M whose i-th column is the base 2 expansion
+----- of Li written increasingly and padded with zeros so every 
+----- element of L has a base 2 expansion of the same length. The
+----- resulting matrix M represents the matroid over ZZ/2.
+-----
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+
+binaryColumnsMatrix = method();
+binaryColumnsMatrix (List) := (L) ->(
+    if any(L, i -> (not instance(i,ZZ)) or i < 0) then error "expected list of positive integers.";
+    --
+    if L == {} then return sub(matrix {}, GF(2));
+    --
+    maxLength := max apply(L, l -> bitLength(l));
+    --
+    matList := apply(maxLength, r -> apply(L, i -> (i // 2^r) % 2));
+    sub(matrix matList, ZZ/2)
+    )
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- INPUT: (M) = a matrix representing a matroid
+-----
+----- OUPUT: A list representing the matroid
+-----
+----- DESCRIPTION: Given a binary matrix M with columns (M1,M2,...Mn) 
+----- representing a matroid over ZZ/2 this returns a list of positive
+----- integers L = {L1,L2,...,Ln} such that the i-th  column is the
+----- base 2 expansion of Li written increasingly and padded with 
+----- zeros so every element of L has a base 2 expansion of the same 
+----- length. The list L is the Fripertinger-Wild representation of
+----- of the matroid represented by M.
+-----
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+
+binaryMatrixToList = method();
+binaryMatrixToList(Matrix) := M -> (
+    if (ring M) =!= ZZ/2 then error "expect matrix to be defined over ZZ/2.";
+    cols := entries transpose M;
+    apply(cols, v -> sum(#v, j -> if v#j == 0 then 0 else 2^j))
+    )
+
+
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- INPUT: (L) = a list representing a matroid
+-----
+----- OUPUT: A matroid
+-----
+----- DESCRIPTION: Given a list L = {L1,L2,...,Ln} of positive intgers
+----- which represents a matroid in Fripertinger-Wild form, this
+----- returns matroid corresponding to the matrix from the function 
+----- "binaryColumnsMatrix" 
+-----
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+
+fwListToMatroid = method();
+fwListToMatroid (List) := (L) -> matroid(binaryColumnsMatrix(L))
+
+
+
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- DESCRIPTION: This snippet of code goes through all of the files
+----- in the simpleRegularLooplessMatroids folder, and extracts the 
+----- size of the base set and the rank for each given file. For
+----- example, reg_simple_con3_2.txt is converted to the list {3,2}.
+----- The output is a list of these pairs called dataRange.
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+fileList = lines get "! ls slcRegular";
+dataRange = apply(fileList,s->(
+	S := separateRegexp("[_]",s);
+	L := separateRegexp("[.]",S#3);
+	{value substring(3,(S#2)),value L#0}
+	));
+
+
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- DESCRIPTION: This is a list of pairs {N,K} for K<=N-1 where we 
+----- know that there are no simple, connected, regular matroids on 
+----- [N] of rank K. There are no such matroids when K>=N.
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+dataZero = {{2,1},{3,1},{4,1},{4,2},{5,1},{5,2},{6,1},{6,2},{7,1},{7,2},
+    {7,3},{8,1},{8,2},{8,3},{9,1},{9,2},{9,3},{10,1},{10,2},{10,3},{11,1},
+    {11,2},{11,3},{11,4},{12,1},{12,2},{12,3},{12,4},{13,1},{13,2},{13,3},
+    {13,4},{14,1},{14,2},{14,3},{14,4},{15,1},{15,2},{15,3},{15,4}};
+
+
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- INPUT: (L) = a list
+-----
+----- OUPUT: true or false
+-----
+----- DESCRIPTION: Given a list L={N,K} of two numbers N and K 
+----- representing size of the base set and rank of the matroid
+----- this returns true if there are no regular, simple, connected 
+----- rank K matroids on [N]. 
+-----
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+
+noMatroidsNK = method();
+noMatroidsNK (List) := (L) ->(
+    N:=L#0; K:=L#1; 
+    if (N>=2 and K>=N) then return true;
+    if (N==1 and K>N) then return true;
+    if member(L,dataZero) then return true;
+    if not member(L,dataRange) then return "no data for this {N,K}";
+    return false
+    )
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- INPUT: (L) = a list
+-----
+----- OUPUT: A string representing a file name
+-----
+----- DESCRIPTION: Given a list L={N,K} of two numbers N and K 
+----- representing size of the base set  and rank of the matroid
+----- this returns the file name and path for the corresponding 
+----- file in the simpleRegularLooplessMatroids folder as a string. 
+----- Specifically it returns
+----- "simpleRegularLooplessMatroids/reg_simple_conN_K" 
+----- where N and K have been converted to strings. 
+-----
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+
+dataFileNameFromList = method();
+dataFileNameFromList (List) := (L) ->(
+    "slcRegular/reg_simple_con"|toString(L#0)|"_"|toString(L#1)|".txt"
+    )
+
+
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+----- INPUT: (L) = a list 
+-----
+----- OUPUT: A list of matrices
+-----
+----- DESCRIPTION: Given a list L={N,K} this function returns a list
+----- of all the regular, simple, connected matroids 
+----- whose base set has size N with rank K,  up to isomorphism
+----- represented as N (columns) x K (rows) matrices.
+----- This is done by loading the matroids from the corresponding 
+----- data file generated from the Fripertinger-Wild data - in the 
+----- simpleRegularLooplessMatroids folder. 
+-----
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+
+rslcMatroids = method();
+rslcMatroids (List) := (L) ->(
+    if noMatroidsNK(L) then return {};
+    if member(L,dataRange) then (
+	L1 := value get dataFileNameFromList(L);
+    	return apply(L1,i->fwListToMatroid(i) );
+	)
+    else return "No data for this {N,K}."
+    )
+
+
+
+hasOddAut = method();
+hasOddAut(Matroid) := (M) -> (
+    any(getIsos(M,M), perm -> permutationSign(perm) == 1)
+)
+
+
+L1 = value get dataFileNameFromList({10,5});
+time apply(L1, l ->(
+	M := fwListToMatroid(l);
+	withoutOddAut(M)
+	))
+apply(L1, l->hasOddAutFripExact(5,l))
+
+a
+
+flatten apply(toList(1..9), n -> (apply(toList(0..n), r -> (
+		if member({n,r}, dataRange) then (
+		    L1 := value get dataFileNameFromList({n,r});
+		    apply(L1, l ->(
+			    M := fwListToMatroid(l);
+			    if hasOddAut(M) != hasOddAutFripExact(r,l) then {l,M,hasOddAut(M),hasOddAutFripExact(r,l)}
+			    ))
+		    )
+		))))
+
+	    apply(toList(0..n), r -> (
+		    if member({n,r},dataRange) then (
+			L1 = value get dataFileNameFromList({n,r});
+			apply(L1, l ->(
+				    M := fwListToMatroid(l);
+				    {withoutOddAut(M), hasOddAutFripExact(r,l)}
+				    )))
+			);
+		    ))))
+
+	n := D#0;
+	r := D#1;
+	if n < 11 then (
+	    L1 := value get dataFileNameFromList(D);
+	    delete(,apply(L1, l ->(
+		    M := convertListToMatroid(l);
+		    if withoutOddAut(M) != hasOddAutFripExact(l) then {l, M}
+		    )))
+	    )
+	))
+
+
+
+
+
+
+
+
+(10, 8, {1, 2, 4, 8, 16, 32, 64, 128, 191, 192})
+stdio:204:27:(3):[10]: error: no source found for bit pattern 3
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 ---- NOT FIXED 
 
 

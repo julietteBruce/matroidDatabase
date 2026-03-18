@@ -269,7 +269,7 @@ multiplyBinaryList (ZZ, List) := (v, B) -> (
     )
 
 
--- FIX 3 & 4: Changed parameter names for clarity;
+-*-- FIX 3 & 4: Changed parameter names for clarity;
 -- 3rd argument must be posTable (vector -> position index), not membTable
 -- 4th argument must be coordToPos (bitmask -> position index), not coordBits
 verifyPartialMap = method();
@@ -293,8 +293,24 @@ verifyPartialMap (ZZ, List, MutableHashTable, MutableHashTable) :=  (i, B, posTa
         newPairs#(#newPairs) = (srcID, dstID);
 	);
     (true, toList newPairs)
-    )
+    )*-
 
+verifyPartialMap = method();
+
+-- stageData is a list of pairs (srcMask, srcID), where
+--   srcMask = coordinate bitmask of an actual source element v in L
+--   srcID   = its position in L
+verifyPartialMap (List, List, MutableHashTable) := (imgB, stageData, posTable) -> (
+    newPairs := new MutableList from {};
+    for p in stageData do (
+        srcMask := p#0;
+        srcID   := p#1;
+        img := multiplyBinaryList(srcMask, imgB);
+        if not posTable#?img then return (false, {});
+        newPairs#(#newPairs) = (srcID, posTable#img);
+    );
+    (true, toList newPairs)
+);
 
 membershipTable = method();
 membershipTable (List) := (L) -> (
@@ -334,82 +350,74 @@ isFalse = x -> (
 )
 
 
-hasOddAut = method(Options => {Validate => false});
-hasOddAut (ZZ, List) := opts -> (k, L) -> (
-    -- basic set-up
-    n := #L;  -- size of ground set
-    B := greedyBinaryBasis(k, L); -- basis for span of L
+hasOddAutoddAutSearch = method(Options => {Validate => false});
+oddAutSearch (ZZ, List) := opts -> (k, L) -> (
+    n := #L;
+    B := greedyBinaryBasis(k, L);
     coordTable := coordinateTable(k, B);
-    membTable := membershipTable(L);
     posTable := positionTable(L);
-    --
-    -- FIX 2: coordTable#v is already an integer bitmask, so just use it directly.
-    -- The old code tried c#i on an integer, which is wrong.
+
     coordBits := new MutableHashTable;
+    for v in L do coordBits#v = coordTable#v;
+
+    -- actual source elements, grouped by highest nonzero coordinate bit
+    sourceByLead := new MutableHashTable;
+    for i from 0 to k-1 do sourceByLead#i = new MutableList from {};
+
     for v in L do (
-	coordBits#v = coordTable#v;
-	);
-    --
-    -- FIX 4: Build a table mapping coordinate bitmasks -> position indices.
-    -- verifyPartialMap needs: given a coordinate bitmask `src`, find the
-    -- position index of the ground-set element with those coordinates.
-    coordToPos := new MutableHashTable;
-    for v in L do (
-	coordToPos#(coordTable#v) = posTable#v;
-	);
-    --
+        c := coordBits#v;
+        j := leadingBit(c);
+        M := sourceByLead#j;
+        M#(#M) = (c, posTable#v);
+    );
+
     mainSearch := null;
-    mainSearch = (i, imgB, usedTable, pivList, mapTable, srcInd) -> (
-	if i == k then (
-	    if permutationSign(mapTable, srcInd) == 1 then (
-		img := for v in L list mapTable#(posTable#v);
-		perm := for j from 0 to (n - 1) list mapTable#j;
-		return {B, imgB, img, perm};
-		);
-	    return false;
-	    );
-	--
-	for x in L do (
-	    if not usedTable#?x then (
-		-- FIX 1: was misspelled as gussianEliminationBinaryList
-		r := gaussianEliminationBinaryList(coordBits#x, pivList);
-		if r != 0 then (
-		    col := leadingBit(r);
-		    newPivotList := append(pivList, (col, r));
-		    imgB2 := append(imgB, x);
-		    --
-		    -- FIX 3: pass posTable (not membTable) so dstID gets a position index
-		    -- FIX 4: pass coordToPos (not coordBits) so srcID gets a position index
-		    result := verifyPartialMap(i, imgB2, posTable, coordToPos);
-		    valid := result#0;
-		    newPairs := result#1;
-		    --
-		    if valid then (
-			for p in newPairs do mapTable#(p#0) = p#1;
-			newSrcInd := srcInd | (for p in newPairs list p#0);
-			--
-			usedTable#x = true;
-			--
-			ans := mainSearch(i+1, imgB2, usedTable, newPivotList, mapTable, newSrcInd);
-			--
-			remove(usedTable, x);
-			for p in newPairs do remove(mapTable, p#0);
-			if not isFalse(ans) then return ans;
-			);
-		    );
-		);
-	    );
-	false
-	);
-    --
+    mainSearch = (i, imgB, usedTable, pivList, mapTable) -> (
+        if i == k then (
+            perm := for j from 0 to (n - 1) list mapTable#j;
+            if permutationSign(perm) == 1 then (
+                img := for j from 0 to (n - 1) list L#(perm#j);
+                return {B, imgB, img, perm};
+            );
+            return false;
+        );
+
+        for x in L do (
+            if not usedTable#?x then (
+                r := gaussianEliminationBinaryList(coordBits#x, pivList);
+                if r != 0 then (
+                    col := leadingBit(r);
+                    newPivotList := append(pivList, (col, r));
+                    imgB2 := append(imgB, x);
+
+                    result := verifyPartialMap(imgB2, toList(sourceByLead#i), posTable);
+                    valid := result#0;
+                    newPairs := result#1;
+
+                    if valid then (
+                        for p in newPairs do mapTable#(p#0) = p#1;
+                        usedTable#x = true;
+
+                        ans := mainSearch(i+1, imgB2, usedTable, newPivotList, mapTable);
+
+                        remove(usedTable, x);
+                        for p in newPairs do remove(mapTable, p#0);
+
+                        if not isFalse(ans) then return ans;
+                    );
+                );
+            );
+        );
+        false
+    );
+
     usedTable0 := new MutableHashTable;
     mapTable0 := new MutableHashTable;
-    mainSearch(0, {}, usedTable0, {}, mapTable0, {})
-    )
-
+    mainSearch(0, {}, usedTable0, {}, mapTable0)
+)
 
 hasOddAutFripExact = (k,L) -> (
-    W := hasOddAut(k,L);
+    W := oddAutSearch(k,L);
     not isFalse(W)
 )
 
@@ -597,30 +605,30 @@ rslcMatroids (List) := (L) ->(
 
 
 
-hasOddAut = method();
-hasOddAut(Matroid) := (M) -> (
+hasOddAutOLD = method();
+hasOddAutOLD(Matroid) := (M) -> (
     any(getIsos(M,M), perm -> permutationSign(perm) == 1)
 )
 
 
 L1 = value get dataFileNameFromList({10,5});
-time apply(L1, l ->(
+apply(L1, l ->(
 	M := fwListToMatroid(l);
-	withoutOddAut(M)
+	hasOddAutOLD(M)
 	))
 apply(L1, l->hasOddAutFripExact(5,l))
 
-a
 
-flatten apply(toList(1..9), n -> (apply(toList(0..n), r -> (
+
+flatten delete(,apply(toList(1..11), n -> (apply(toList(0..n), r -> (
 		if member({n,r}, dataRange) then (
 		    L1 := value get dataFileNameFromList({n,r});
-		    apply(L1, l ->(
+		    delete(,apply(L1, l ->(
 			    M := fwListToMatroid(l);
-			    if hasOddAut(M) != hasOddAutFripExact(r,l) then {l,M,hasOddAut(M),hasOddAutFripExact(r,l)}
-			    ))
+			    if hasOddAutOLD(M) != hasOddAutFripExact(r,l) then {l,M,hasOddAutOLD(M),hasOddAutFripExact(r,l)}
+			    )))
 		    )
-		))))
+		)))))
 
 	    apply(toList(0..n), r -> (
 		    if member({n,r},dataRange) then (

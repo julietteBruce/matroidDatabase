@@ -605,6 +605,73 @@ rslcMatroids (List) := (L) ->(
 
 
 
+
+
+
+createBasisFile = method();
+createBasisFile (ZZ, ZZ) := (n, r) -> (
+    basisList := rankedBasis(n,r);
+    fileName := "comp/slcRegular/slcRegular_"|toString(n)|"_"|toString(r)|".txt";
+    f := openOut fileName;
+    for M in basisList do (
+	B := bases(M);
+	E := toList groundSet(M);
+	f << toExternalString {E, B};
+	f << endl;
+	);
+    close(f)
+    )
+
+
+time apply(toList(1..15), n ->(apply(toList(0..n), r -> (
+		if member({n,r}, dataRange) then (
+		    print (n,r);
+		    L1 := value get dataFileNameFromList({n,r});
+		    time basisList := delete(,apply(L1, l -> (
+			    if hasOddAutFripExact(r,l) == false then fwListToMatroid(l)
+			    )));
+		    fileName := "comp/slcRegular/slcRegular_"|toString(n)|"_"|toString(r)|".txt";
+		    f := openOut fileName;
+		    for M in basisList do (
+			B := bases(M);
+			E := toList groundSet(M);
+			f << toExternalString {E, B};
+			f << endl;
+			);
+		    close(f)
+		    )
+		else (
+		    fileName := "comp/slcRegular/slcRegular_"|toString(n)|"_"|toString(r)|".txt";
+		    f := openOut fileName;
+		    close(f)
+		    );
+		))))
+	    
+	    ))
+    )
+
+readBasisFile = method();
+readBasisFile (ZZ, ZZ, String) := (n, r, s) -> (
+    fileName := "comp/slcRegular/slcRegular_"|toString(n)|"_"|toString(r)|".txt";
+    fileLines := lines get fileName;
+    apply(fileLines, l -> (
+	    L := value l;
+	    E := L#0;
+	    B := L#1;
+	    matroid(E,B)
+	    ))
+    )
+
+slcReg = apply(toList(1..15), n->apply(toList(0..n), r->(try readBasisFile(n,r,"slcRegular") else infinity)))
+apply(slcReg,n->apply(n,r->(
+	    if not instance(r,List) then infinity
+	    else #r)))
+
+--------------------------------------------------------------------
+--------------------------------------------------------------------
+
+
+
 hasOddAutOLD = method();
 hasOddAutOLD(Matroid) := (M) -> (
     any(getIsos(M,M), perm -> permutationSign(perm) == 1)
@@ -640,7 +707,16 @@ time apply(toList(1..11), n ->(apply(toList(0..n), r -> (
     )
 
 
-
+time apply(toList(1..11), n ->(apply(toList(0..n), r -> (
+		if member({n,r}, dataRange) then (
+		    print (n,r);
+		    L1 := value get dataFileNameFromList({n,r});
+		    time apply(L1, l -> (
+			    hasOddAutFripExact(r,l);
+			    ))
+		    ))
+	    ))
+    )
 
 
 

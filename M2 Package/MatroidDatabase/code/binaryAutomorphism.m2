@@ -302,20 +302,16 @@ greedyBinaryBasis (ZZ, List) := (k, L) -> (
 -- Test 0: empty list
 --------------------------------------------------------------------
 assert( greedyBinaryBasis({}) == {} )
-print "Test 0 (empty list): PASSED"
 
 --------------------------------------------------------------------
 -- Test 1: single nonzero element
 --------------------------------------------------------------------
 assert( greedyBinaryBasis({5}) == {5} )
-print "Test 1 (single element): PASSED"
-
 --------------------------------------------------------------------
 -- Test 2: standard basis vectors — all independent
 --   4=100, 2=010, 1=001  →  should keep all three
 --------------------------------------------------------------------
 assert( greedyBinaryBasis({4, 2, 1}) == {4, 2, 1} )
-print "Test 2 (standard basis): PASSED"
 
 --------------------------------------------------------------------
 -- Test 3: three independent, one dependent
@@ -328,20 +324,17 @@ print "Test 2 (standard basis): PASSED"
 --     6 → vRed = 6 xor 7 = 1, then 1 xor 1 = 0   skipped
 --------------------------------------------------------------------
 assert( greedyBinaryBasis({7, 5, 3, 6}) == {7, 5, 3} )
-print "Test 3 (one dependent vector dropped): PASSED"
 
 --------------------------------------------------------------------
 -- Test 4: all duplicates
 --   Every copy after the first reduces to 0
 --------------------------------------------------------------------
 assert( greedyBinaryBasis({3, 3, 3}) == {3} )
-print "Test 4 (all duplicates): PASSED"
 
 --------------------------------------------------------------------
 -- Test 5: early-stop variant — request 2 out of 3 independent
 --------------------------------------------------------------------
 assert( greedyBinaryBasis(2, {4, 2, 1}) == {4, 2} )
-print "Test 5 (early stop k=2): PASSED"
 
 --------------------------------------------------------------------
 -- Test 6: early-stop when list has fewer than k independent vectors
@@ -350,15 +343,11 @@ print "Test 5 (early stop k=2): PASSED"
 --------------------------------------------------------------------
 result6 := greedyBinaryBasis(2, {3, 3, 3});
 assert( result6 == {3} )
-print "Test 6 (k exceeds rank, graceful fallback): PASSED"
 
 --------------------------------------------------------------------
 -- Test 7: zero in the input list — should be silently skipped
 --------------------------------------------------------------------
 assert( greedyBinaryBasis({0, 5, 0, 3}) == {5, 3} )
-print "Test 7 (zeros in list): PASSED"
-
-print "--- all tests passed ---"
 
 
 --------------------------------------------------------------------
@@ -394,14 +383,12 @@ assert( multiplyBinaryList(0, {7, 5, 3}) == 0 )
 --   v = 1 = ...001  →  picks B#0 = 7
 --------------------------------------------------------------------
 assert( multiplyBinaryList(1, {7, 5, 3}) == 7 )
-print "Test 1 (single column, first): PASSED"
 
 --------------------------------------------------------------------
 -- Test 2: v selects only the second column
 --   v = 2 = ...010  →  picks B#1 = 5
 --------------------------------------------------------------------
 assert( multiplyBinaryList(2, {7, 5, 3}) == 5 )
-print "Test 2 (single column, second): PASSED"
 
 --------------------------------------------------------------------
 -- Test 3: v selects columns 0 and 1
@@ -409,7 +396,6 @@ print "Test 2 (single column, second): PASSED"
 --   7 = 111, 5 = 101  →  xor = 010 = 2
 --------------------------------------------------------------------
 assert( multiplyBinaryList(3, {7, 5, 3}) == 2 )
-print "Test 3 (two columns): PASSED"
 
 --------------------------------------------------------------------
 -- Test 4: v selects all three columns
@@ -417,7 +403,6 @@ print "Test 3 (two columns): PASSED"
 --   111 xor 101 = 010, then 010 xor 011 = 001 = 1
 --------------------------------------------------------------------
 assert( multiplyBinaryList(7, {7, 5, 3}) == 1 )
-print "Test 4 (all columns): PASSED"
 
 --------------------------------------------------------------------
 -- Test 5: identity-like basis {4,2,1} = standard basis vectors
@@ -425,7 +410,6 @@ print "Test 4 (all columns): PASSED"
 --   v = 5 = 101  →  picks B#0=4(100) and B#2=1(001)  →  xor = 101 = 5
 --------------------------------------------------------------------
 assert( multiplyBinaryList(5, {4, 2, 1}) == 5 )
-print "Test 5 (standard basis, v maps to itself): PASSED"
 
 
 
@@ -465,7 +449,6 @@ srcL1 = new MutableHashTable from {1 => 100};
 (ok1, pairs1) = verifyPartialMap(0, B1, pos1, srcL1);
 assert(ok1 == true);
 assert(pairs1 == {(100, 10)});
-print "Test 1 passed: i=0 base case";
 
 ------------------------------------------------------------
 -- Test 2: i = 1  (k in {0, 1})
@@ -481,7 +464,6 @@ assert(ok2 == true);
 assert(#pairs2 == 2);
 assert(pairs2#0 == (200, 20));   -- k=0
 assert(pairs2#1 == (201, 21));   -- k=1
-print "Test 2 passed: i=1, two combinations";
 
 ------------------------------------------------------------
 -- Test 3: Failure case — image not found in posTable
@@ -495,11 +477,45 @@ srcL3 = new MutableHashTable from {2 => 300, 3 => 301};
 (ok3, pairs3) = verifyPartialMap(1, B3, pos3, srcL3);
 assert(ok3 == false);
 assert(pairs3 == {});
-print "Test 3 passed: returns false when image not in posTable";
 
 
-hasOddAut = method();
-hasOddAut (ZZ, List) := (k, L) -> (
+
+membershipTable = method();
+membershipTable (List) := (L) -> (
+    membTable := new MutableHashTable;
+    for x in L do membTable#x = true;
+    membTable
+    )
+
+-- WARNING ONLY WORKS FOR NON-DUPLICATES
+positionTable = method();
+positionTable (List) := (L) -> (
+    posTable := new MutableHashTable;
+    for i from 0 to (#L - 1) do (posTable#(L#i) = i);
+    posTable
+    )
+
+
+-- Coordinate table relative to an ordered basis B.
+-- T#x = mask such that x = evalMaskGF2(mask,B).
+coordinateTable = method();
+coordinateTable (ZZ, List) := (k, B) -> (
+    if #B != k then error "Basis has wrong length";
+    if not (isIndependent(B,k)) then error "B is not independent";
+    --
+    T := new MutableHashTable;
+    --
+    for v from 0 to (2^k - 1) do (
+        x := multiplyBinaryList(v,B);
+        if T#?x then error "coordinateTableGF2: duplicate vector found; B is not a basis";
+        T#x = v;
+    );
+    --
+    T
+);
+
+hasOddAut = method((Options => {Validate => false});
+hasOddAut (ZZ, List) := opts -> (k, L) -> (
     -- optional validation step, which can be skipped for speed
     if opts.Validate == true then (
 	validateBinaryMatroidData(L)
@@ -507,18 +523,18 @@ hasOddAut (ZZ, List) := (k, L) -> (
     -- basic set-up
     n := #L;  -- size of ground set
     B := greedyBinaryBasis(k, L); -- basis for span of L
-    cordTable := cordinateTable(k, B);
+    coordTable := coordinateTable(k, B);
     membTable := membershipTable(L);
     posTable := positionTable(L);
     --
-    cordBits := new MutableHashTable;
+    coordBits := new MutableHashTable;
     for v in L do (
-	c := cordTable#v;
+	c := coordTable#v;
 	bits := 0;
 	for i from 0 to (k - 1) do (
 	    if c#i == 1 then bits = bits + (1 << i);
 	    );
-	cordBits#v = bits;
+	coordBits#v = bits;
 	);
     --
     mainSearch := null;
@@ -534,26 +550,26 @@ hasOddAut (ZZ, List) := (k, L) -> (
 	--
 	for x in L do (
 	    if not usedTable#?x then (
-		r := gussianEliminationBinaryList(cordBits#x, pivList);
+		r := gaussianEliminationBinaryList(cordBits#x, pivList);
 		if r != 0 then (
 		    col := leadingBit(r);
 		    newPivotList := append(pivList, (col, r));
-		    imgB2 := append(imgB, x)
+		    imgB2 := append(imgB, x);
 		    --
-		    result := verifyPartialMap(i, imgB2, L, membTable, cordBits);
+		    result := verifyPartialMap(i, imgB2, L, membTable, coordBits);
 		    valid := result#0;
 		    newPairs := result#1;
 		    --
 		    if valid then (
 			for p in newPairs do mapTable#(p#0) = p#1;
-			newSrcInd := srcInd | (for p in newPairs lsit p#0);
+			newSrcInd := srcInd | (for p in newPairs list p#0);
 			--
 			usedTable#x = true;
 			--
 			ans := mainSearch(i+1, imgB2, usedTable, newPivotList, mapTable, newSrcInd);
 			--
 			remove(usedTable, x);
-			for p in newPairs do remove (mapTable, p#0);
+			for p in newPairs do remove(mapTable, p#0);
 			if not isFalse(ans) then return ans;
 			);
 		    );
@@ -562,35 +578,16 @@ hasOddAut (ZZ, List) := (k, L) -> (
 	false
 	);
     --
-    usedTable0 = new MutableHashTable;
-    mapTable0 = new MutableHashTable;
-    mainSearch(0, {}, used0, {}, mapTable0, {})
-    
+    usedTable0 := new MutableHashTable;
+    mapTable0 := new MutableHashTable;
+    mainSearch(0, {}, usedTable0, {}, mapTable0, {})
     )
 
 
 
 ---- NOT FIXED 
 
--- Coordinate table relative to an ordered basis B.
--- T#x = mask such that x = evalMaskGF2(mask,B).
-coordinateTableGF2 = (B,k) -> (
-    if #B != k then error "coordinateTableGF2: basis has wrong length";
-    if not (isIndependentGF2(B,k)) then error "coordinateTableGF2: B is not independent";
 
-    T := new MutableHashTable;
-
-    for mask from 0 to (2^k - 1) do (
-        x := evalMaskGF2(mask,B);
-
-        -- With B a basis, each x in GF(2)^k must occur exactly once.
-        if T#?x then error "coordinateTableGF2: duplicate vector found; B is not a basis";
-
-        T#x = mask;
-    );
-
-    T
-);
 
 
 -- ============================================================
@@ -618,21 +615,7 @@ validateFripBinaryInput = (k,L) -> (
     S
 );
 
-buildMembershipTable = (S) -> (
-    T := new MutableHashTable;
-    for x in S do (
-        T#x = true;
-    );
-    T
-);
 
-buildPositionTable = (S) -> (
-    P := new MutableHashTable;
-    for i from 0 to (#S - 1) do (
-        P#(S#i) = i;
-    );
-    P
-);
 
 
 -- ============================================================

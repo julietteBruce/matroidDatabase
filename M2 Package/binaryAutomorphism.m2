@@ -350,7 +350,7 @@ isFalse = x -> (
 )
 
 
-hasOddAutoddAutSearch = method(Options => {Validate => false});
+oddAutSearch = method(Options => {Validate => false});
 oddAutSearch (ZZ, List) := opts -> (k, L) -> (
     n := #L;
     B := greedyBinaryBasis(k, L);
@@ -619,242 +619,32 @@ apply(L1, l ->(
 apply(L1, l->hasOddAutFripExact(5,l))
 
 
-
-flatten delete(,apply(toList(1..11), n -> (apply(toList(0..n), r -> (
+time apply(toList(1..11), n ->(apply(toList(0..n), r -> (
 		if member({n,r}, dataRange) then (
+		    apply(L1, l ->(hasOddAutFripExact(r,l)));
+			)
+		    ))
+		))
+      
+
+time apply(toList(1..11), n ->(apply(toList(0..n), r -> (
+		if member({n,r}, dataRange) then (
+		    print (n,r);
 		    L1 := value get dataFileNameFromList({n,r});
-		    delete(,apply(L1, l ->(
-			    M := fwListToMatroid(l);
-			    if hasOddAutOLD(M) != hasOddAutFripExact(r,l) then {l,M,hasOddAutOLD(M),hasOddAutFripExact(r,l)}
-			    )))
-		    )
-		)))))
-
-	    apply(toList(0..n), r -> (
-		    if member({n,r},dataRange) then (
-			L1 = value get dataFileNameFromList({n,r});
-			apply(L1, l ->(
-				    M := fwListToMatroid(l);
-				    {withoutOddAut(M), hasOddAutFripExact(r,l)}
-				    )))
-			);
-		    ))))
-
-	n := D#0;
-	r := D#1;
-	if n < 11 then (
-	    L1 := value get dataFileNameFromList(D);
-	    delete(,apply(L1, l ->(
-		    M := convertListToMatroid(l);
-		    if withoutOddAut(M) != hasOddAutFripExact(l) then {l, M}
-		    )))
-	    )
-	))
-
-
-
-
-
-
-
-
-(10, 8, {1, 2, 4, 8, 16, 32, 64, 128, 191, 192})
-stdio:204:27:(3):[10]: error: no source found for bit pattern 3
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
----- NOT FIXED 
-
-
-
-
--- ============================================================
--- Input validation
--- ============================================================
-
-validateFripBinaryInput = (k,L) -> (
-    if k <= 0 then error "validateFripBinaryInput: k must be positive";
-
-    -- Canonical ground-set order for parity computations.
-    S := sort(L);
-    n := #S;
-
-    -- Simplicity checks: no duplicates, no zero column.
-    if #unique(S) != n then error "validateFripBinaryInput: labels must be distinct";
-    if any(S, x -> x == 0) then error "validateFripBinaryInput: labels must be nonzero";
-
-    -- Ambient-space sanity: every label must actually lie in GF(2)^k.
-    if any(S, x -> x < 0) then error "validateFripBinaryInput: labels must be nonnegative integers";
-    if any(S, x -> x >= 2^k) then error "validateFripBinaryInput: some label lies outside GF(2)^k";
-
-    -- Rank check.
-    if rankGF2(S,k) != k then error "validateFripBinaryInput: wrong rank for this label list";
-
-    S
-);
-
-
-
-
--- ============================================================
--- Data induced by an ordered image of a basis
--- ============================================================
-
--- Inputs:
---   S      = sorted ground set
---   coords = coordinate table for a fixed ordered basis B of S
---   Bim    = ordered image of B
---   Sset   = membership table for S
---   pos    = position table for S
---
--- Output:
---   false, if Bim does not define an automorphism of S;
---   otherwise {image, perm}, where
---      image = { T(x) : x in S in sorted order }
---      perm  = { position of T(x) in sorted S : x in S in sorted order }
-inducedDataFromBasisImage = (S,coords,Bim,Sset,pos) -> (
-    image := {};
-    perm := {};
-
-    for x in S do (
-        -- For valid input this should never fail: S lies in the span of B.
-        if not (coords#?x) then error "inducedDataFromBasisImage: internal error, x missing from coordinate table";
-
-        y := evalMaskGF2(coords#x, Bim);
-        image = append(image, y);
-
-        if not (Sset#?y) then return false;
-
-        perm = append(perm, pos#y);
-    );
-
-    {image, perm}
-);
-
-
--- ============================================================
--- Exact search for an odd automorphism
--- ============================================================
-
--- Returns:
---   false, if there is no odd automorphism;
---   otherwise a witness of the form
---      {B, Bim, image, perm}
---   where:
---      B     = chosen ordered basis of S
---      Bim   = ordered image of B
---      image = images of S in sorted order
---      perm  = induced permutation on positions 0..n-1
-
-hasOddAut = method(Options => {Validate => false});
-hasOddAut (ZZ, List) := opts -> (k, L) -> (
-    -- basic set-up
-    n := #L;  -- size of ground set
-    B := greedyBinaryBasis(k, L); -- basis for span of L
-    coordTable := coordinateTable(k, B);
-    membTable := membershipTable(L);
-    posTable := positionTable(L);
-    --
-    -- FIX 2: coordTable#v is already an integer bitmask, so just use it directly.
-    -- The old code tried c#i on an integer, which is wrong.
-    coordBits := new MutableHashTable;
-    for v in L do (
-	coordBits#v = coordTable#v;
-	);
-    --
-    -- FIX 4: Build a table mapping coordinate bitmasks -> position indices.
-    -- verifyPartialMap needs: given a coordinate bitmask `src`, find the
-    -- position index of the ground-set element with those coordinates.
-    coordToPos := new MutableHashTable;
-    for v in L do (
-	coordToPos#(coordTable#v) = posTable#v;
-	);
-    --
-    mainSearch := null;
-    mainSearch = (i, imgB, usedTable, pivList, mapTable, srcInd) -> (
-	if i == k then (
-	    if permutationSign(mapTable, srcInd) == 1 then (
-		img := for v in L list mapTable#(posTable#v);
-		perm := for j from 0 to (n - 1) list mapTable#j;
-		return {B, imgB, img, perm};
-		);
-	    return false;
-	    );
-	--
-	for x in L do (
-	    if not usedTable#?x then (
-		-- FIX 1: was misspelled as gussianEliminationBinaryList
-		r := gaussianEliminationBinaryList(coordBits#x, pivList);
-		if r != 0 then (
-		    col := leadingBit(r);
-		    newPivotList := append(pivList, (col, r));
-		    imgB2 := append(imgB, x);
-		    --
-		    -- FIX 3: pass posTable (not membTable) so dstID gets a position index
-		    -- FIX 4: pass coordToPos (not coordBits) so srcID gets a position index
-		    result := verifyPartialMap(i, imgB2, posTable, coordToPos);
-		    valid := result#0;
-		    newPairs := result#1;
-		    --
-		    if valid then (
-			for p in newPairs do mapTable#(p#0) = p#1;
-			newSrcInd := srcInd | (for p in newPairs list p#0);
-			--
-			usedTable#x = true;
-			--
-			ans := mainSearch(i+1, imgB2, usedTable, newPivotList, mapTable, newSrcInd);
-			--
-			remove(usedTable, x);
-			for p in newPairs do remove(mapTable, p#0);
-			if not isFalse(ans) then return ans;
-			);
-		    );
-		);
-	    );
-	false
-	);
-    --
-    usedTable0 := new MutableHashTable;
-    mapTable0 := new MutableHashTable;
-    mainSearch(0, {}, usedTable0, {}, mapTable0, {})
+		    time apply(L1, l -> (
+			    M :=  fwListToMatroid(l);
+			    hasOddAutOLD(M);
+			    ))
+		    ))
+	    ))
     )
 
 
 
 
 
-hasOddAutFripExact = (k,L) -> (
-    W := oddAutWitnessFripExact(k,L);
-    not isFalseBoolean(W)
 
-);
 
-withoutOddAutFripExact = (k,L) -> (
-    not hasOddAutFripExact(k,L)
-);
-
-isFalseBoolean = x -> (
-    (class x === Boolean) and (not x)
-);
-
-isTrueBoolean = x -> (
-    (class x === Boolean) and x
-);
 
 
 

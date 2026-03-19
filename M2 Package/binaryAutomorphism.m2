@@ -269,31 +269,7 @@ multiplyBinaryList (ZZ, List) := (v, B) -> (
     )
 
 
--*-- FIX 3 & 4: Changed parameter names for clarity;
--- 3rd argument must be posTable (vector -> position index), not membTable
--- 4th argument must be coordToPos (bitmask -> position index), not coordBits
-verifyPartialMap = method();
-verifyPartialMap (ZZ, List, MutableHashTable, MutableHashTable) :=  (i, B, posTable, coordToPos) -> (
-    newPairs := new MutableList;
-    numPrev := 1 << i;
-    for k from 0 to (numPrev - 1) do (
-	img := B#i;
-	src := (1 << i);
-	for j from 0 to (i - 1) do (
-	    if  (k >> j) % 2 == 1 then (
-		img = bitXor(img, B#j);
-		src = bitXor(src, 1 << j);
-		);
-	    );
-	if not posTable#?img then return (false, {});
-	--
-	dstID := posTable#img;
-	srcID := if coordToPos#?src then coordToPos#src
-                 else error("no source found for bit pattern " | toString src);
-        newPairs#(#newPairs) = (srcID, dstID);
-	);
-    (true, toList newPairs)
-    )*-
+
 
 verifyPartialMap = method();
 
@@ -623,7 +599,7 @@ createBasisFile (ZZ, ZZ) := (n, r) -> (
     )
 
 
-time apply(toList(1..15), n ->(apply(toList(0..n), r -> (
+time apply({15}, n ->(apply({15,14,13,12,11,10}, r -> (
 		if member({n,r}, dataRange) then (
 		    print (n,r);
 		    L1 := value get dataFileNameFromList({n,r});

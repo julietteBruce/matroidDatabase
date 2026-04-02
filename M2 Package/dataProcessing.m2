@@ -49,5 +49,6 @@ readDataToLists (String, String) := (inFile, outFile) -> (
 ----- Run this to generate all the data. 
 --------------------------------------------------------------------
 dataTypes = {"lcBinary","slBinary", "slcBinary", "looplessBinary", "lcRegular"}
+dataTypes = {"lcRegular"}
 apply(dataTypes, s -> convertFile(s))
 
